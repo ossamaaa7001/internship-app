@@ -161,7 +161,7 @@ document.getElementById('loadMore').onclick=()=>discoverJobs(true);
 document.querySelectorAll('#quickSkills button').forEach(b=>b.onclick=()=>{document.getElementById('skillInput').value=b.dataset.skill;document.querySelectorAll('#quickSkills button').forEach(x=>x.classList.toggle('selected',x===b));discoverJobs()});
 document.getElementById('heroExplore').onclick=()=>document.getElementById('discover').scrollIntoView({behavior:'smooth'});
 document.getElementById('heroSkills').onclick=()=>{document.getElementById('discover').scrollIntoView({behavior:'smooth'});document.getElementById('skillInput').focus()};
-document.getElementById('themeToggle').onclick=()=>{document.body.classList.toggle('night');localStorage.setItem('radarNight',document.body.classList.contains('night')?'yes':'no')};
+function setRadarTheme(){document.body.classList.toggle('night');localStorage.setItem('radarNight',document.body.classList.contains('night')?'yes':'no')};
 if(localStorage.getItem('radarNight')==='yes')document.body.classList.add('night');
 document.getElementById('kindFilter').onchange=()=>{if(document.getElementById('skillInput').value.trim())discoverJobs()};
 
@@ -183,7 +183,7 @@ document.getElementById('navPrev').onclick=()=>moveNav(-1);
 document.getElementById('navNext').onclick=()=>moveNav(1);
 const themeTop=document.getElementById('themeTop');
 function themeLabel(){themeTop.textContent=document.body.classList.contains('night')?'☀ Light mode':'☾ Dark mode'}
-themeTop.onclick=()=>{document.getElementById('themeToggle').click();themeLabel()};
+themeTop.onclick=()=>{setRadarTheme();themeLabel()};
 themeLabel();
 document.getElementById('quickExplore').onclick=()=>{navigate('internships');document.getElementById('discover').scrollIntoView({behavior:'smooth',block:'start'})};
 document.getElementById('quickApplications').onclick=()=>navigate('applications');
