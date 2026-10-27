@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://internship-radar-kappa.vercel.app/sitemap.xml
