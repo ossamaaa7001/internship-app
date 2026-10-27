@@ -149,8 +149,8 @@ async def assistant_chat(data: AssistantMessage):
     search_term = message
     if intent_jobs:
         # Strip natural-language prefixes while retaining useful role/skill terms.
-        search_term = re.sub(r"(?i)\\b(find|show|search|look for|me|please|jobs?|internships?|opportunities|remote|available|for|in|the|a|an)\\b", " ", message)
-        search_term = re.sub(r"\\s+", " ", search_term).strip()[:80]
+        search_term = re.sub(r"(?i)\b(find|show|search|look for|me|please|jobs?|internships?|opportunities|remote|available|for|in|the|a|an)\b", " ", message)
+        search_term = re.sub(r"\s+", " ", search_term).strip()[:80]
         if not search_term:
             search_term = " ".join(data.skills[:3])[:80]
         try:
