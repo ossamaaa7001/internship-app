@@ -86,3 +86,48 @@ async def matches(authorization: str | None = Header(default=None)):
         haystack = " ".join(str(item.get(k) or "") for k in ("title","description","location")).lower()
         item["match_score"] = round(100 * sum(k in haystack for k in keywords) / len(keywords)) if keywords else 0
     return sorted(internships_list,key=lambda i:i["match_score"],reverse=True)
+
+
+# Public remote job search. Data belongs to Himalayas; direct applications to its source.
+from fastapi import Query
+import re
+
+@app.get("/discover")
+async def discover(q: str = Query(default="", max_length=100), country: str = Query(default="", max_length=60), page: int = Query(default=1, ge=1, le=20), internship_only: bool = False):
+    params = {"q": q.strip(), "sort": "recent", "page": page}
+    if country.strip():
+        params["country"] = country.strip()
+    try:
+        async with httpx.AsyncClient(timeout=18, follow_redirects=True) as client:
+            response = await client.get("https://himalayas.app/jobs/api/search", params=params, headers={"Accept": "application/json", "User-Agent": "InternshipRadar/1.1"})
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.RequestError, httpx.HTTPStatusError, ValueError):
+        raise HTTPException(502, "External job provider is temporarily unavailable")
+    results = []
+    for item in payload.get("jobs", [])[:30]:
+        title = str(item.get("title") or "")
+        employment = str(item.get("employmentType") or "")
+        seniority = item.get("seniority") or []
+        if internship_only and not re.search(r"intern|trainee|graduate|apprentice", title+" "+employment, re.I):
+            continue
+        link = str(item.get("applicationLink") or "")
+        if not link.startswith("https://"):
+            continue
+        location = item.get("locationRestrictions") or []
+        company_logo = item.get("companyLogo") or ""
+        results.append({
+            "id": str(item.get("guid") or link),
+            "title": title,
+            "company": str(item.get("companyName") or "Company"),
+            "location": ", ".join(x.get("name","") for x in location if isinstance(x,dict)) or "Worldwide / check eligibility",
+            "description": str(item.get("excerpt") or "")[:650],
+            "source_url": link,
+            "company_logo": company_logo if isinstance(company_logo,str) and company_logo.startswith("https://") else "",
+            "employment_type": employment,
+            "seniority": seniority,
+            "published_at": item.get("pubDate"),
+            "source": "Himalayas",
+            "external": True
+        })
+    return {"jobs": results, "source": "Himalayas", "total": payload.get("totalCount", 0), "page": page, "notice": "Remote roles may have location restrictions; check the original listing and eligibility before applying."}
