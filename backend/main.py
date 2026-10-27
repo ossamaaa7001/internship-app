@@ -131,3 +131,80 @@ async def discover(q: str = Query(default="", max_length=100), country: str = Qu
             "external": True
         })
     return {"jobs": results, "source": "Himalayas", "total": payload.get("totalCount", 0), "page": page, "notice": "Remote roles may have location restrictions; check the original listing and eligibility before applying."}
+
+
+class AssistantMessage(BaseModel):
+    message: str = Field(min_length=1, max_length=1000)
+    skills: list[str] = Field(default_factory=list, max_length=15)
+    history: list[dict] = Field(default_factory=list, max_length=8)
+
+@app.post("/assistant/chat")
+async def assistant_chat(data: AssistantMessage):
+    """Career assistant: live search + optional LLM. No customer-care contacts are fabricated."""
+    message = data.message.strip()
+    low = message.lower()
+    intent_jobs = any(word in low for word in ("job", "intern", "opportunit", "vacanc", "career", "remote", "find", "search", "hire", "work"))
+    support = any(word in low for word in ("support", "customer care", "contact", "whatsapp", "email", "call", "phone", "helpdesk"))
+    results = []
+    search_term = message
+    if intent_jobs:
+        # Strip natural-language prefixes while retaining useful role/skill terms.
+        search_term = re.sub(r"(?i)\\b(find|show|search|look for|me|please|jobs?|internships?|opportunities|remote|available|for|in|the|a|an)\\b", " ", message)
+        search_term = re.sub(r"\\s+", " ", search_term).strip()[:80]
+        if not search_term:
+            search_term = " ".join(data.skills[:3])[:80]
+        try:
+            search = await discover(q=search_term, page=1, internship_only=("intern" in low))
+            results = search.get("jobs", [])[:5]
+        except HTTPException:
+            pass
+    help_text = (
+        "I can help you navigate Internship Radar, search live remote opportunities, "
+        "choose roles matching your skills, and explain application tracking. "
+        "Use Find Internships to search; My Applications to track saved applications; "
+        "My Profile to add skills; and the top-right account button to sign in."
+    )
+    if support:
+        help_text = ("Customer care phone, WhatsApp and email are not configured yet. "
+                     "You can use the Contact Support options once the administrator adds verified details.")
+    elif intent_jobs:
+        help_text = (f"I searched external remote job listings for '{search_term or 'general roles'}'. "
+                     f"I found {len(results)} results to explore below. "
+                     "Check the original listing for eligibility, deadlines and availability."
+                     if results else
+                     "I couldn't retrieve matching live opportunities right now. Try a specific skill or job title. "
+                     "You can also search using the Find Internships section.")
+    elif "apply" in low or "track" in low or "save" in low:
+        help_text = "To track an application, sign in, open Find Internships, and select Save / Track. Then open My Applications to update the status. External job links can be saved to this browser."
+    elif "sign" in low or "register" in low or "account" in low:
+        help_text = "Select Sign in / Register at the top of the page. Register with your email and password, confirm your email if asked, and then sign in."
+    elif "skill" in low or "profile" in low:
+        help_text = "Open My Profile, add your skills and field of study, and select Save my skills. Then use Find matching jobs to search for relevant opportunities."
+    ai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if ai_key:
+        try:
+            system = (
+                "You are Internship Radar's concise, friendly career and app assistant. "
+                "Explain the app accurately. Only recommend specific real jobs from the supplied results; "
+                "never invent vacancies, deadlines, contacts, eligibility, or application links. "
+                "For support, contact details are not configured yet. "
+                "Give practical matching guidance for the user's skills. "
+                "Mention that external remote roles may be location-restricted. "
+                "Do not promise jobs or ask for sensitive personal data."
+            )
+            context = {"message":message,"skills":data.skills,"live_jobs":results,
+                       "app_guidance":help_text}
+            async with httpx.AsyncClient(timeout=20) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization":"Bearer "+ai_key,"Content-Type":"application/json"},
+                    json={"model":os.environ.get("OPENAI_MODEL","gpt-4o-mini"),
+                          "messages":[{"role":"system","content":system},
+                                      {"role":"user","content":str(context)}],
+                          "temperature":0.35,"max_tokens":320})
+                response.raise_for_status()
+                ai_reply=response.json()["choices"][0]["message"]["content"]
+                return {"reply":ai_reply,"jobs":results,"mode":"ai","support_configured":False}
+        except (httpx.HTTPError, KeyError, IndexError, ValueError):
+            pass
+    return {"reply":help_text,"jobs":results,"mode":"guided","support_configured":False}
